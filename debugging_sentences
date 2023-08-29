@@ -1,0 +1,18 @@
+####
+initial sent: I also suggest that more plays and films should <ns type"RV"> <ns type"FV"><i>be taken</i><c>take</c></ns> place</ns>.
+I also suggest that more plays and films should be taken place</ns>.
+I also suggest that more plays and films should be taken place .
+
+####
+initial sent: When we <ns type"TV"><i> <ns type"DV"><i>entrance</i><c>enter</c></ns></i><c>entered</c></ns> the place our problems <ns type"TV"><i>begun</i><c>began</c></ns>.
+after cleaning: When we entrance</i><c>entered</c></ns> the place our problems begun.
+original incorrect sent: When we entrance the place our problems begun .
+
+
+
+#### 
+initial sent: I also suggest that more plays and films should <ns type"RV"> <ns type"FV"><i>be taken</i><c>take</c></ns> place</ns>.
+I also suggest that more plays and films should be taken place</ns>.
+I also suggest that more plays and films should be taken place .
+
+
