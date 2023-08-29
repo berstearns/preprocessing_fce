@@ -36,11 +36,11 @@ debugging_examples = [
 
 
 def print_instance(instance):
-    '''
-        print annotated sentence instance data 
-        deleting very long properties that 
-        are not really necessary to be visualized
-    '''
+    """
+    print annotated sentence instance data
+    deleting very long properties that
+    are not really necessary to be visualized
+    """
     pprint.pprint(
         {
             k: v
@@ -51,10 +51,10 @@ def print_instance(instance):
 
 
 def find_language(original_document_filepath):
-    '''
-        extract text from the language tag in a file from 
-        the released FCE dataset 
-    '''
+    """
+    extract text from the language tag in a file from
+    the released FCE dataset
+    """
     original_document_patterns = {"language": "<language>[A-Za-z]+</language>"}
     with open(original_document_filepath, encoding="UTF-8") as originalinpf:
         file_content = originalinpf.read()
@@ -63,39 +63,50 @@ def find_language(original_document_filepath):
             if re.search(original_document_patterns["language"], file_content)
             else ""
         )
-        extracted_learnerl1 = learnerl1_tag.replace("<language>", "").replace("</language>", "")
-        assert extracted_learnerl1 != "", f"learnerl1 is empty for {original_document_filepath}"
+        extracted_learnerl1 = learnerl1_tag.replace("<language>", "").replace(
+            "</language>", ""
+        )
+        assert (
+            extracted_learnerl1 != ""
+        ), f"learnerl1 is empty for {original_document_filepath}"
     return extracted_learnerl1
 
 
 def align_annotation(instance):
-    '''
-        uses annotations list and tokens list
-        to assign tokens to one annotation
-    '''
+    """
+    uses annotations list and tokens list
+    to assign tokens to one annotation
+    """
     return instance
+
 
 def extract_annotation_data(
     annotation, curr_deannotated_sentence, match_type, patterns, extra_len
 ):
-    '''
-        extract annotations tags from string and parse
-        data properties related to each.
-    '''
+    """
+    extract annotations tags from string and parse
+    data properties related to each.
+    """
     extracted_annotation_data = {"match_type": match_type}
     annotation_len = len(annotation.group(0))
     extracted_annotation_data["annotationStr"] = annotation.group(0)
     match_error_type = re.search(
         patterns["error_type"], extracted_annotation_data["annotationStr"]
     )
-    extracted_annotation_data["error_type_symbol"] = match_error_type.group(0).split('"')[1]
+    extracted_annotation_data["error_type_symbol"] = match_error_type.group(0).split(
+        '"'
+    )[1]
     extracted_annotation_data["incorrect_token"] = (
-        re.search(patterns["i"], extracted_annotation_data["annotationStr"]).group(0)[3:-4]
+        re.search(patterns["i"], extracted_annotation_data["annotationStr"]).group(0)[
+            3:-4
+        ]
         if re.search(patterns["i"], extracted_annotation_data["annotationStr"])
         else ""
     )
     extracted_annotation_data["correct_token"] = (
-        re.search(patterns["c"], extracted_annotation_data["annotationStr"]).group(0)[3:-4]
+        re.search(patterns["c"], extracted_annotation_data["annotationStr"]).group(0)[
+            3:-4
+        ]
         if re.search(patterns["c"], extracted_annotation_data["annotationStr"])
         else ""
     )
@@ -103,7 +114,9 @@ def extract_annotation_data(
         annotated_sentence_match_start_idx,
         _,
     ) = annotation.span()
-    token_start_idx_in_incorrect_sentence = annotated_sentence_match_start_idx - extra_len
+    token_start_idx_in_incorrect_sentence = (
+        annotated_sentence_match_start_idx - extra_len
+    )
     token_end_idx_in_incorrect_sentence = (
         annotated_sentence_match_start_idx
         - extra_len
@@ -119,27 +132,32 @@ def extract_annotation_data(
     token_start_idx_in_deannotated_sentence = curr_deannotated_sentence.find(
         extracted_annotation_data["annotationStr"]
     )
-    token_end_idx_in_deannotated_sentence = token_start_idx_in_deannotated_sentence + len(
-        extracted_annotation_data["incorrect_token"]
+    token_end_idx_in_deannotated_sentence = (
+        token_start_idx_in_deannotated_sentence
+        + len(extracted_annotation_data["incorrect_token"])
     )
     extracted_annotation_data["span_in_DeannotatedSentence"] = [
         token_start_idx_in_deannotated_sentence,
         token_end_idx_in_deannotated_sentence,
     ]
     curr_deannotated_sentence = curr_deannotated_sentence.replace(
-        extracted_annotation_data["annotationStr"], extracted_annotation_data["incorrect_token"], 1
+        extracted_annotation_data["annotationStr"],
+        extracted_annotation_data["incorrect_token"],
+        1,
     )
     return extracted_annotation_data, curr_deannotated_sentence, extra_len
 
 
 def annotation_removal(annotation, curr_deannotated_sentence, match_type):
-    '''
-        given a sentence with annotations remove the next ocurrence
-        of a given annotation
-    '''
+    """
+    given a sentence with annotations remove the next ocurrence
+    of a given annotation
+    """
     annotation_str = annotation.group(0)
     if match_type != "incorrectToken":
-        curr_deannotated_sentence = curr_deannotated_sentence.replace(annotation_str, "", 1)
+        curr_deannotated_sentence = curr_deannotated_sentence.replace(
+            annotation_str, "", 1
+        )
     else:
         curr_deannotated_sentence = curr_deannotated_sentence.replace(
             annotation_str, annotation_str.replace("<i>", "").replace("</i>", ""), 1
@@ -219,13 +237,13 @@ if __name__ == "__main__":
                     "startTag": rf'<ns type"({ALPHANUMERIC_PATTERN})"({ALPHANUMERIC_PATTERN})?>',
                     "endTag": r"<\/ns>",
                     "ReplacementCorrection": rf'<ns type"({ALPHANUMERIC_PATTERN})"'
-                                            +rf'({ALPHANUMERIC_PATTERN})?>'
-                                            +rf'<i>({ALPHANUMERIC_PATTERN})<\/i>'
-                                            +rf'<c>({ALPHANUMERIC_PATTERN})<\/c><\/ns>',
+                    + rf"({ALPHANUMERIC_PATTERN})?>"
+                    + rf"<i>({ALPHANUMERIC_PATTERN})<\/i>"
+                    + rf"<c>({ALPHANUMERIC_PATTERN})<\/c><\/ns>",
                     "IncorrectRemoval": rf'<ns type"({ALPHANUMERIC_PATTERN})">'
-                                        +rf'<i>({ALPHANUMERIC_PATTERN})<\/i><\/ns>',
+                    + rf"<i>({ALPHANUMERIC_PATTERN})<\/i><\/ns>",
                     "CorrectInsert": rf'<ns type"({ALPHANUMERIC_PATTERN})">'
-                                    +rf'<c>({ALPHANUMERIC_PATTERN})<\/c><\/ns>',
+                    + rf"<c>({ALPHANUMERIC_PATTERN})<\/c><\/ns>",
                     "doubleCorrection": '<ns type["<>/A-Za-z]+</ns>',
                     "error_type": '<ns type"[A-Za-z]+',
                 }
@@ -346,8 +364,8 @@ if __name__ == "__main__":
                         instance_data["hasError"] = True
 
                 if any(
-                        term in instance_data["deannotated_sentence"]
-                        for term in ["<ns", "</ns", "<i>", "</i>", "<c>", "</c>"]
+                    term in instance_data["deannotated_sentence"]
+                    for term in ["<ns", "</ns", "<i>", "</i>", "<c>", "</c>"]
                 ):
                     counts["error"] += 1
                     instance_data["hasError"] = True
