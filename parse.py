@@ -2,13 +2,18 @@
     Given the FCE released dataset and the annotated dataset files
     Extract annotations and align annotations to tokens in incorrect sentences 
     OUTPUTTING a JSON file with annotation per token in the incorrect sentence
+
+    docs: https://docs.google.com/document/d/19GjzEgShH1E6PMNcgZA_pMog-fM3DqRkBS3Rja1bDz0/edit 
 """
 import json
+import copy
 import re
 import os
 from collections import defaultdict
+import difflib
 import pprint
 import nltk
+from nltk.tag import pos_tag
 
 debugging_examples = [
     'I am very sorry to say it was definitely not a perfect evening out,\
@@ -34,6 +39,115 @@ debugging_examples = [
     <ns type"TV"><i>begun</i><c>began</c></ns>.',
 ]
 
+def check_only_instances_with_empty_incorrect_tokens_have_no_aligned_tokens(instances_):
+    notokens = 0
+    notokens_n_notInsertion = 0
+    for instance in instances_.values():
+        for annotation in instance["annotations"]: 
+            if len(annotation["aligned_incorrect_tokens"]) == 0 \
+                    and annotation["incorrect_token"] != '':
+                print(annotation)
+                print(instance["deannotated_sentence"])
+                notokens += 1
+    print(notokens);input()
+
+def span_tokenize(sentence):
+    '''
+        uses nltk TreebanWordTOkenizer
+        to return tuple ("token", (start_idx, end_idx), token_idx)
+        per token
+    '''
+    tokenizer = nltk.TreebankWordTokenizer()
+    tokens_data = list(zip(tokenizer.tokenize(sentence), tokenizer.span_tokenize(sentence)))
+    tokens = [tpl[0] for tpl in tokens_data]
+    pos_tags = pos_tag(tokens)
+    tokens_data = [(*tpl, idx) for idx, tpl in enumerate(tokens_data)]
+    tokens_data = [(*tpl, pos[1], len(tpl[0])) for tpl, pos in zip(tokens_data, pos_tags)] 
+    return tokens_data
+
+def align_spans_token_to_annotation(annotation, tokens_):
+    '''
+        given a token in the format (token, (start_idx, end_idx))
+        and a list of annotations. 
+        assign for each annotation a list of tokens based on span overlap
+    '''
+    annt_start_idx, annt_end_idx = annotation["span_in_DeannotatedSentence"] 
+    annotation["aligned_incorrect_tokens"] = []
+    for token_idx, token in enumerate(tokens_):
+        t_start_idx, t_end_idx = token[1]
+        isSpan = (annt_start_idx == t_start_idx) and (annt_end_idx == t_end_idx) 
+        isWithinSpan = ((annt_start_idx <= t_start_idx) and (annt_end_idx > t_end_idx))\
+                    or ((annt_start_idx < t_start_idx) and (annt_end_idx >= t_end_idx))
+        if isSpan or isWithinSpan:
+            annotation["aligned_incorrect_tokens"].append(token)
+    annotation["number_of_incorrect_tokens"] = len(annotation["aligned_incorrect_tokens"])
+    return annotation
+
+def align_spans_token_to_annotations(curr_instance_data):
+    '''
+        given a list of tokens in the format (token, (start_idx, end_idx))
+        and a list of annotations. 
+        assign a field for each annotation a list of tokens based on span overlap
+        named 'aligned_incorrect_tokens'
+    '''
+    tokens_ = curr_instance_data["tokenized_deannotated_sentence"]
+    annotations_ = curr_instance_data["annotations"]
+    aligned_annotations = [align_spans_token_to_annotation(annotation, tokens_)
+                            for annotation in annotations_]
+    return aligned_annotations
+
+def linguistic_process(idx, pos_tags, tokens_):
+    '''
+        extract linguistic features 
+        of a new token being put 
+        into a new context sentence
+    '''
+    token_str =  tokens_[idx][0]
+    token_len = len(token_str)
+    acc_idx = 0
+    for idx_before_selected_token in range(idx): 
+        acc_idx += len(tokens_[idx_before_selected_token][0]) + 1
+    start_idx = acc_idx
+    end_idx = start_idx + token_len
+    span = (start_idx, end_idx)
+    pos = pos_tags[idx][1]
+    instance_tpl = (token_str, span, idx, pos, token_len) 
+    return instance_tpl 
+
+def replace_incorrect_tokens_with_correction_tokens(curr_instance_data):
+    '''
+        for each annotation replace the incorrect tokens
+        with annotation correction tokens using
+        the deannotated tokenized sentence
+    '''
+    annotations_ = curr_instance_data["annotations"]
+    modified_annotations = []
+    for annotation_ in annotations_:
+        tokens_ = copy.deepcopy(curr_instance_data["tokenized_deannotated_sentence"])
+        if annotation_["regex_match_type"] == 'replacement_correction':
+            aligned_incorrect_tokens_idxs = [idx for (_,_,idx,_,_) in annotation_["aligned_incorrect_tokens"]]
+            correct_tokens = annotation_["correct_token"].split(" ")
+            for idx in aligned_incorrect_tokens_idxs[::-1]:
+                tokens_.pop(idx)
+            for correct_token in correct_tokens[::-1]:
+                tokens_.insert(idx, (correct_token, ))
+            partially_corrected_sentence = " ".join([tpl[0] for tpl in tokens_])
+            pos_tags = pos_tag([tpl[0] for tpl in tokens_])
+            annotation_["correction_idxs_in_partially_corrected_sentence"] =\
+                [idx for idx, tpl in enumerate(tokens_) if len(tpl) == 1 ]
+
+
+            annotation_["tokenized_partially_corrected_sentence"] = [tpl if len(tpl) == 5 else linguistic_process(idx, pos_tags, tokens_) 
+                     for idx, tpl in enumerate(tokens_)]
+
+            modified_annotations.append(copy.deepcopy(annotation_))
+        else:
+            modified_annotations.append(copy.deepcopy(annotation_))
+        if annotation_.get('correction_idxs_in_partially_corrected_sentence') and len(annotation_['correction_idxs_in_partially_corrected_sentence']) > 1:
+            print("\n")
+            print(annotation_)
+            print("\n")
+    return modified_annotations
 
 def print_instance(instance):
     """
@@ -71,23 +185,35 @@ def find_language(original_document_filepath):
         ), f"learnerl1 is empty for {original_document_filepath}"
     return extracted_learnerl1
 
-
-def align_annotation(instance):
+def find_score(original_document_filepath):
     """
-    uses annotations list and tokens list
-    to assign tokens to one annotation
+    extract text from the score tag in a file from
+    the released FCE dataset
     """
-    return instance
-
+    original_document_patterns = {"score": "<score>[0-9.]+</score>"}
+    with open(original_document_filepath, encoding="UTF-8") as originalinpf:
+        file_content = originalinpf.read()
+        learnerscore_tag = (
+            re.search(original_document_patterns["score"], file_content).group(0)
+            if re.search(original_document_patterns["score"], file_content)
+            else ""
+        )
+        extracted_learnerscore = learnerscore_tag.replace("<score>", "").replace(
+            "</score>", ""
+        )
+        assert (
+            extracted_learnerscore != ""
+        ), f"learnerscore is empty for {original_document_filepath} {file_content}"
+    return extracted_learnerscore
 
 def extract_annotation_data(
-    annotation, curr_deannotated_sentence, match_type, patterns, extra_len
+    annotation, curr_deannotated_sentence, regex_match_type, patterns, extra_len
 ):
     """
     extract annotations tags from string and parse
     data properties related to each.
     """
-    extracted_annotation_data = {"match_type": match_type}
+    extracted_annotation_data = {"regex_match_type": regex_match_type}
     annotation_len = len(annotation.group(0))
     extracted_annotation_data["annotationStr"] = annotation.group(0)
     match_error_type = re.search(
@@ -148,13 +274,13 @@ def extract_annotation_data(
     return extracted_annotation_data, curr_deannotated_sentence, extra_len
 
 
-def annotation_removal(annotation, curr_deannotated_sentence, match_type):
+def annotation_removal(annotation, curr_deannotated_sentence, regex_match_type):
     """
     given a sentence with annotations remove the next ocurrence
     of a given annotation
     """
     annotation_str = annotation.group(0)
-    if match_type != "incorrectToken":
+    if regex_match_type != "incorrectToken":
         curr_deannotated_sentence = curr_deannotated_sentence.replace(
             annotation_str, "", 1
         )
@@ -167,13 +293,13 @@ def annotation_removal(annotation, curr_deannotated_sentence, match_type):
 
 if __name__ == "__main__":
     ORIGINAL_FILEPATH = (
-        "../data/fce_dataset/fce-correction-annotations/" + "en_esl-ud-train.conllu"
+        "/app/pipelines/data/fce_dataset/fce-correction-annotations/" + "en_esl-ud-train.conllu"
     )
     CORRECTED_FILEPATH = (
-        "../data/fce_dataset/fce-correction-annotations/corrected/"
+        "/app/pipelines/data/fce_dataset/fce-correction-annotations/corrected/"
         + "en_cesl-ud-train.conllu"
     )
-    ORIGINAL_DOCUMENT_FOLDERPATH = "../data/fce_dataset/fce-released-dataset/dataset"
+    ORIGINAL_DOCUMENT_FOLDERPATH = "/app/pipelines/data/fce_dataset/fce-released-dataset/dataset"
     OUTPUT_FILEPATH = "fce_error_annotations.json"
     CORRECT_OUTPUT_FILEPATH = "fce_correct_error_annotations.json"
     IDENTICAL_OUTPUT_FILEPATH = "fce_identical_error_annotations.json"
@@ -193,9 +319,10 @@ if __name__ == "__main__":
                     ORIGINAL_DOCUMENT_FOLDERPATH, foldername, filename
                 )
                 learnerl1 = find_language(originalDocument_filepath)
-
+                learnerscore = find_score(originalDocument_filepath)
                 instance_data["sentence_id"] = sent_id
                 instance_data["learnerl1"] = learnerl1
+                instance_data["learnerscore"] = learnerscore
             if line.startswith("# text"):
                 incorrect_sentence = line.replace("# text = ", "").strip()
                 instance_data["incorrect_sentence"] = incorrect_sentence
@@ -293,7 +420,9 @@ if __name__ == "__main__":
                 instance_data["deannotated_sentence"] = TANNT
                 print(f"initial sentence: {TANNT}")
                 partial_deannotated_sentence = instance_data["deannotated_sentence"]
-
+                DEBUG = False
+                if "I would prefer to stay in" in TANNT:
+                    DEBUG = True
                 for annotation_tpl in sorted(
                     [
                         *ReplacementCorrection_Matches,
@@ -302,6 +431,7 @@ if __name__ == "__main__":
                     ],
                     key=lambda tpl: tpl[0].span()[0],
                 ):  # globalMatches:
+                    print(partial_deannotated_sentence)
                     annotation_match, match_tag_type = annotation_tpl
                     (
                         annotationData,
@@ -314,13 +444,17 @@ if __name__ == "__main__":
                         regex_patterns,
                         ACC_EXTRA_LEN,
                     )
+                    if DEBUG:
+                        print(partial_deannotated_sentence)
                     annotations.append(annotationData)
 
                 instance_data["deannotated_sentence"] = partial_deannotated_sentence
+                '''
                 instance_data["deannotated_sentence"] = re.sub(
                     " +", " ", instance_data["deannotated_sentence"]
                 )
-                instance_data["tokenized_deannotated_sentence"] = nltk.word_tokenize(
+                '''
+                instance_data["tokenized_deannotated_sentence"] = span_tokenize(
                     instance_data["deannotated_sentence"]
                 )
                 # for idx, a in enumerate(annotations):
@@ -331,7 +465,7 @@ if __name__ == "__main__":
 
                 # print(instance_data["deannotated_sentence"], instance_data["incorrect_sentence"])
                 if (
-                    instance_data["tokenized_deannotated_sentence"]
+                    [token for (token,*_) in instance_data["tokenized_deannotated_sentence"]]
                     == instance_data["tokenized_incorrect_sentence"]
                 ):
                     counts["identical"] += 1
@@ -342,8 +476,6 @@ if __name__ == "__main__":
                     instance_data["deannotated_sentence"]
                     == instance_data["incorrect_sentence"]
                 ):
-                    import difflib
-
                     output_list = [
                         li
                         for li in difflib.ndiff(
@@ -394,13 +526,12 @@ if __name__ == "__main__":
                 if not instance_data["hasError"]:
                     correct_instances[instance_data["sentence_id"]] = instance_data
                 if instance_data["isIdentical"]:
-                    # instance_data = align_annotation_to_token(instance_data)
+                    instance_data["annotations"] = align_spans_token_to_annotations(instance_data)
+                    instance_data["annotations"] = replace_incorrect_tokens_with_correction_tokens(instance_data)
                     identical_instances[instance_data["sentence_id"]] = instance_data
 
                 # print_instance(instance_data)
                 instance_data = {}
-
-    print(counts)
 
     with open("error_sentences", "w", encoding="UTF-8") as errorf:
         for s in error_sentences:
@@ -414,3 +545,5 @@ if __name__ == "__main__":
 
     with open(IDENTICAL_OUTPUT_FILEPATH, "w", encoding="UTF-8") as outf:
         outf.write(json.dumps(identical_instances, indent=4))
+
+    print(counts)
