@@ -8,11 +8,13 @@ import os
 from collections import defaultdict
 
 def main(_FILEPATH):
+    MASK_TOKEN_STR = "[MASK]"
     INSTANCES_COUNTER = defaultdict(lambda : defaultdict(int))
     FOLDERPATH, FILENAME = os.path.split(_FILEPATH)
     OUTF_FILENAME = f"flattened_{FILENAME.replace('.json','')}.tsv"
     OUTF_FILEPATH = os.path.join(FOLDERPATH, OUTF_FILENAME)  
     columns = ["masked_sentence",
+               "mask_token_str",
                "mapping_type",
                "learnerl1",
                "learnerRawScore",
@@ -30,7 +32,8 @@ def main(_FILEPATH):
                 for aligned_token_relative_idx, token_tpl in enumerate(annotation["aligned_incorrect_tokens"]):
                     masked_sentence_data = {
                             "masked_sentence": None,
-                            "regex_matching": annotation["match_type"],
+                            "mask_token_str": MASK_TOKEN_STR,
+                            "regex_match_type": annotation["regex_match_type"],
                             "learnerl1": sentence_dict["learnerl1"], #(learner)
                             "learnerRawScore": sentence_dict["learnerscore"], #(learner)
                             "annotationErrorType": annotation["error_type_symbol"], #(annotation)	
@@ -39,17 +42,17 @@ def main(_FILEPATH):
                             "incorrect_token_length": token_tpl[4], #(annotation)
                             "incorrect_token_pos": token_tpl[3], #(annotation)	
                             }
-                    INSTANCES_COUNTER["regex_types"][annotation["match_type"]] +=1
+                    INSTANCES_COUNTER["regex_types"][annotation["regex_match_type"]] +=1
                     aligned_token_idx_in_tokenized_deannoated_sentence = token_tpl[2]
                     masked_tokenized_sentence = " ".join([ token_tpl_[0] 
                                                 if token_tpl_[2] != aligned_token_idx_in_tokenized_deannoated_sentence
-                                                else "[MASK]"
+                                                else MASK_TOKEN_STR 
                                                   for token_tpl_ in sentence_dict["tokenized_deannotated_sentence"] ]) 
                     masked_sentence_data["masked_sentence"] = masked_tokenized_sentence 
                     instance_data_str =  "\t".join([str(v) for v in list(masked_sentence_data.values())])+"\n"
                     print(instance_data_str)
-                    #if masked_sentence_data["regex_matching"] == "replacement_correction":
-                    flat_outf.write(instance_data_str)
+                    if masked_sentence_data["regex_match_type"] == "replacement_correction":
+                        flat_outf.write(instance_data_str)
         print(INSTANCES_COUNTER["regex_types"])
 
 
