@@ -292,14 +292,18 @@ def annotation_removal(annotation, curr_deannotated_sentence, regex_match_type):
 
 
 if __name__ == "__main__":
-    ORIGINAL_FILEPATH = (
-        "/app/pipelines/data/fce_dataset/fce-correction-annotations/" + "en_esl-ud-train.conllu"
+    # "/app/pipelines/data/fce_dataset/fce-correction-annotations/"
+    FCEBaseFolderPath = "./fce_dataset/" 
+    FCECorrectionsFolderPath = os.path.join(FCEBaseFolderPath, 'fce-correction-annotations')
+    FCEReleasedFolderPath = os.path.join(FCEBaseFolderPath, 'fce-released-dataset', 'dataset')
+    ORIGINAL_FILEPATH = os.path.join(
+            FCECorrectionsFolderPath, "en_esl-ud-train.conllu"
     )
-    CORRECTED_FILEPATH = (
-        "/app/pipelines/data/fce_dataset/fce-correction-annotations/corrected/"
-        + "en_cesl-ud-train.conllu"
+    CORRECTED_FILEPATH = os.path.join(
+        FCECorrectionsFolderPath, "corrected", "en_cesl-ud-train.conllu"
     )
-    ORIGINAL_DOCUMENT_FOLDERPATH = "/app/pipelines/data/fce_dataset/fce-released-dataset/dataset"
+    ORIGINAL_DOCUMENT_FOLDERPATH = FCEReleasedFolderPath 
+    # "/app/pipelines/data/fce_dataset/fce-released-dataset/dataset"
     OUTPUT_FILEPATH = "fce_error_annotations.json"
     CORRECT_OUTPUT_FILEPATH = "fce_correct_error_annotations.json"
     IDENTICAL_OUTPUT_FILEPATH = "fce_identical_error_annotations.json"
